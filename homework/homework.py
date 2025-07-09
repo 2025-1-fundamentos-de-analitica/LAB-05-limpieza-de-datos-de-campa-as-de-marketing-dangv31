@@ -4,6 +4,11 @@ Escriba el codigo que ejecute la accion solicitada.
 
 # pylint: disable=import-outside-toplevel
 
+import zipfile
+import glob
+import pandas as pd
+import os
+from datetime import datetime
 
 def clean_campaign_data():
     """
@@ -49,8 +54,45 @@ def clean_campaign_data():
 
 
     """
+    output_path = "files/output/"
+    zip_folder = "files/input/*"
 
-    return
+    dataframes = []
+    
+    for zip_path in glob.glob(zip_folder):
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            for file_name in z.namelist():
+                with z.open(file_name) as f:
+                    df = pd.read_csv(f)
+                    dataframes.append(df)
+    full_df = pd.concat(dataframes, ignore_index=True)
+
+    # Client.csv
+    client_df = full_df[[ "client_id", "age", "job", "marital", "education", "credit_default", "mortgage"]].copy()
+    client_df["job"] = client_df["job"].str.replace(".", "").str.replace("-", "_")
+    client_df["education"] = client_df["education"].str.replace(".", "_")
+    client_df["education"] = client_df["education"].replace("unknown", pd.NA)
+    client_df["credit_default"] = (client_df["credit_default"] == "yes").astype(int)
+    client_df["mortgage"] = (client_df["mortgage"] == "yes").astype(int)
+
+    # Campaign.csv
+    campaign_df = full_df[["client_id", "number_contacts", "contact_duration","previous_campaign_contacts", "previous_outcome","campaign_outcome", "day", "month"]].copy()
+
+    campaign_df["previous_outcome"] = (campaign_df["previous_outcome"] == "success").astype(int)
+    campaign_df["campaign_outcome"] = (campaign_df["campaign_outcome"] == "yes").astype(int)
+
+    campaign_df["last_contact_date"] = campaign_df.apply(lambda row: datetime.strptime(f"2022-{row['month']}-{int(row['day'])}", "%Y-%b-%d").strftime("%Y-%m-%d"), axis=1)
+
+    campaign_df.drop(columns=["day", "month"], inplace=True)
+
+    # Economics.csv
+    economics_df = full_df[["client_id", "cons_price_idx", "euribor_three_months"]].copy()
+
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+    client_df.to_csv(os.path.join(output_path, "client.csv"), index=False)
+    campaign_df.to_csv(os.path.join(output_path, "campaign.csv"), index=False)
+    economics_df.to_csv(os.path.join(output_path, "economics.csv"), index=False)
 
 
 if __name__ == "__main__":
